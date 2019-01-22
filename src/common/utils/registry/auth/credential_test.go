@@ -1,17 +1,16 @@
-/*
-   Copyright (c) 2016 VMware, Inc. All Rights Reserved.
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-*/
+// Copyright Project Harbor Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package auth
 
@@ -27,7 +26,7 @@ func TestAddAuthorizationOfBasicAuthCredential(t *testing.T) {
 		t.Fatalf("failed to create request: %v", err)
 	}
 
-	cred.AddAuthorization(req)
+	cred.Modify(req)
 
 	usr, pwd, ok := req.BasicAuth()
 	if !ok {
@@ -40,28 +39,5 @@ func TestAddAuthorizationOfBasicAuthCredential(t *testing.T) {
 
 	if pwd != "pwd" {
 		t.Errorf("unexpected password: %s != pwd", pwd)
-	}
-}
-
-func TestAddAuthorizationOfCookieCredential(t *testing.T) {
-	cookie := &http.Cookie{
-		Name:  "name",
-		Value: "value",
-	}
-	cred := NewCookieCredential(cookie)
-	req, err := http.NewRequest("GET", "http://example.com", nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
-	}
-
-	cred.AddAuthorization(req)
-
-	ck, err := req.Cookie("name")
-	if err != nil {
-		t.Fatalf("failed to get cookie: %v", err)
-	}
-
-	if ck.Value != "value" {
-		t.Errorf("unexpected value: %s != value", ck.Value)
 	}
 }

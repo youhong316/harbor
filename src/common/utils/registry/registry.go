@@ -1,15 +1,16 @@
-/*
-   Copyright (c) 2016 VMware, Inc. All Rights Reserved.
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-       http://www.apache.org/licenses/LICENSE-2.0
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-*/
+// Copyright Project Harbor Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package registry
 
@@ -20,10 +21,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
-	"github.com/vmware/harbor/src/common/utils"
-	registry_error "github.com/vmware/harbor/src/common/utils/registry/error"
+	// "time"
+
+	commonhttp "github.com/goharbor/harbor/src/common/http"
+	"github.com/goharbor/harbor/src/common/utils"
 )
 
 // Registry holds information of a registry entity
@@ -32,15 +34,19 @@ type Registry struct {
 	client   *http.Client
 }
 
-var secureHTTPTransport, insecureHTTPTransport *http.Transport
+var defaultHTTPTransport, secureHTTPTransport, insecureHTTPTransport *http.Transport
 
 func init() {
+	defaultHTTPTransport = &http.Transport{}
+
 	secureHTTPTransport = &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: false,
 		},
 	}
 	insecureHTTPTransport = &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
@@ -48,8 +54,11 @@ func init() {
 }
 
 // GetHTTPTransport returns HttpTransport based on insecure configuration
-func GetHTTPTransport(insecure bool) *http.Transport {
-	if insecure {
+func GetHTTPTransport(insecure ...bool) *http.Transport {
+	if len(insecure) == 0 {
+		return defaultHTTPTransport
+	}
+	if insecure[0] {
 		return insecureHTTPTransport
 	}
 	return secureHTTPTransport
@@ -68,17 +77,6 @@ func NewRegistry(endpoint string, client *http.Client) (*Registry, error) {
 	}
 
 	return registry, nil
-}
-
-// NewRegistryWithModifiers returns an instance of Registry according to the modifiers
-func NewRegistryWithModifiers(endpoint string, insecure bool, modifiers ...Modifier) (*Registry, error) {
-
-	transport := NewTransport(GetHTTPTransport(insecure), modifiers...)
-
-	return NewRegistry(endpoint, &http.Client{
-		Transport: transport,
-		Timeout:   30 * time.Second,
-	})
 }
 
 // Catalog ...
@@ -115,7 +113,7 @@ func (r *Registry) Catalog() ([]string, error) {
 			}
 
 			repos = append(repos, catalogResp.Repositories...)
-			//Link: </v2/_catalog?last=library%2Fhello-world-25&n=100>; rel="next"
+			// Link: </v2/_catalog?last=library%2Fhello-world-25&n=100>; rel="next"
 			link := resp.Header.Get("Link")
 			if strings.HasSuffix(link, `rel="next"`) && strings.Index(link, "<") >= 0 && strings.Index(link, ">") >= 0 {
 				suffix = link[strings.Index(link, "<")+1 : strings.Index(link, ">")]
@@ -123,9 +121,9 @@ func (r *Registry) Catalog() ([]string, error) {
 				suffix = ""
 			}
 		} else {
-			return repos, &registry_error.Error{
-				StatusCode: resp.StatusCode,
-				Detail:     string(b),
+			return repos, &commonhttp.Error{
+				Code:    resp.StatusCode,
+				Message: string(b),
 			}
 		}
 	}
@@ -134,7 +132,7 @@ func (r *Registry) Catalog() ([]string, error) {
 
 // Ping ...
 func (r *Registry) Ping() error {
-	req, err := http.NewRequest("GET", buildPingURL(r.Endpoint.String()), nil)
+	req, err := http.NewRequest(http.MethodHead, buildPingURL(r.Endpoint.String()), nil)
 	if err != nil {
 		return err
 	}
@@ -154,8 +152,8 @@ func (r *Registry) Ping() error {
 		return err
 	}
 
-	return &registry_error.Error{
-		StatusCode: resp.StatusCode,
-		Detail:     string(b),
+	return &commonhttp.Error{
+		Code:    resp.StatusCode,
+		Message: string(b),
 	}
 }

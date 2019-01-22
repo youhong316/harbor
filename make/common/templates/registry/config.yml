@@ -1,35 +1,37 @@
 version: 0.1
 log:
-  level: debug
+  level: info
   fields:
     service: registry
 storage:
-    cache:
-        layerinfo: inmemory
-    filesystem:
-        rootdirectory: /storage
-    maintenance:
-        uploadpurging:
-            enabled: false
-    delete:
-        enabled: true
+  cache:
+    layerinfo: redis
+  $storage_provider_info
+  maintenance:
+    uploadpurging:
+      enabled: false
+  delete:
+    enabled: true
+redis:
+  addr: $redis_host:$redis_port
+  password: $redis_password
+  db: $redis_db_index_reg
 http:
-    addr: :5000
-    secret: placeholder
-    debug:
-        addr: localhost:5001
+  addr: :5000
+  secret: placeholder
+  debug:
+    addr: localhost:5001
 auth:
   token:
-    issuer: registry-token-issuer
-    realm: $ui_url/service/token
+    issuer: harbor-token-issuer
+    realm: $public_url/service/token
     rootcertbundle: /etc/registry/root.crt
-    service: token-service
-
+    service: harbor-registry
 notifications:
   endpoints:
-      - name: harbor
-        disabled: false
-        url: http://ui/service/notifications
-        timeout: 3000ms
-        threshold: 5
-        backoff: 1s
+  - name: harbor
+    disabled: false
+    url: $core_url/service/notifications
+    timeout: 3000ms
+    threshold: 5
+    backoff: 1s

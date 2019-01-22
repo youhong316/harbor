@@ -49,14 +49,30 @@ note() { printf "\n${underline}${bold}${blue}Note:${reset} ${blue}%s${reset}\n" 
 set -e
 set +o noglob
 
-usage=$'Please set hostname and other necessary attributes in harbor.cfg first. DO NOT use localhost or 127.0.0.1 for hostname, because Harbor needs to be accessed by external clients.'
+usage=$'Please set hostname and other necessary attributes in harbor.cfg first. DO NOT use localhost or 127.0.0.1 for hostname, because Harbor needs to be accessed by external clients.
+Please set --with-notary if needs enable Notary in Harbor, and set ui_url_protocol/ssl_cert/ssl_cert_key in harbor.cfg bacause notary must run under https. 
+Please set --with-clair if needs enable Clair in Harbor
+Please set --with-chartmuseum if needs enable Chartmuseum in Harbor'
 item=0
+
+# notary is not enabled by default
+with_notary=$false
+# clair is not enabled by default
+with_clair=$false
+# chartmuseum is not enabled by default
+with_chartmuseum=$false
 
 while [ $# -gt 0 ]; do
         case $1 in
             --help)
             note "$usage"
             exit 0;;
+            --with-notary)
+            with_notary=true;;
+            --with-clair)
+            with_clair=true;;
+			--with-chartmuseum)
+			with_chartmuseum=true;;
             *)
             note "$usage"
             exit 1;;
@@ -68,7 +84,7 @@ workdir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $workdir
 
 # The hostname in harbor.cfg has not been modified
-if grep 'hostname = reg.mydomain.com' &> /dev/null harbor.cfg
+if grep '^[[:blank:]]*hostname = reg.mydomain.com' &> /dev/null harbor.cfg
 then
 	warn "$usage"
 	exit 1
@@ -134,10 +150,10 @@ h2 "[Step $item]: checking installation environment ..."; let item+=1
 check_docker
 check_dockercompose
 
-if [ -f harbor*.tgz ]
+if [ -f harbor*.tar.gz ]
 then
 	h2 "[Step $item]: loading Harbor images ..."; let item+=1
-	docker load -i ./harbor*.tgz
+	docker load -i ./harbor*.tar.gz
 fi
 echo ""
 
@@ -146,19 +162,47 @@ if [ -n "$host" ]
 then
 	sed "s/^hostname = .*/hostname = $host/g" -i ./harbor.cfg
 fi
-./prepare
+prepare_para=
+if [ $with_notary ] 
+then
+	prepare_para="${prepare_para} --with-notary"
+fi
+if [ $with_clair ]
+then
+	prepare_para="${prepare_para} --with-clair"
+fi
+if [ $with_chartmuseum ]
+then
+    prepare_para="${prepare_para} --with-chartmuseum"
+fi
+
+./prepare $prepare_para
 echo ""
 
 h2 "[Step $item]: checking existing instance of Harbor ..."; let item+=1
-if [ -n "$(docker-compose -f docker-compose*.yml ps -q)"  ]
+docker_compose_list='-f docker-compose.yml'
+if [ $with_notary ] 
 then
-	note "stopping existing Harbor instance ..."
-	docker-compose -f docker-compose*.yml down
+	docker_compose_list="${docker_compose_list} -f docker-compose.notary.yml"
+fi
+if [ $with_clair ]
+then
+	docker_compose_list="${docker_compose_list} -f docker-compose.clair.yml"
+fi
+if [ $with_chartmuseum ]
+then
+    docker_compose_list="${docker_compose_list} -f docker-compose.chartmuseum.yml"
+fi
+
+if [ -n "$(docker-compose $docker_compose_list ps -q)"  ]
+then
+	note "stopping existing Harbor instance ..." 
+	docker-compose $docker_compose_list down -v
 fi
 echo ""
 
 h2 "[Step $item]: starting Harbor ..."
-docker-compose -f docker-compose*.yml up -d
+docker-compose $docker_compose_list up -d
 
 protocol=http
 hostname=reg.mydomain.com
@@ -168,7 +212,7 @@ then
 protocol=${BASH_REMATCH[1]}
 fi
 
-if [[ $(grep 'hostname[[:blank:]]*=' ./harbor.cfg) =~ hostname[[:blank:]]*=[[:blank:]]*(.*) ]]
+if [[ $(grep '^[[:blank:]]*hostname[[:blank:]]*=' ./harbor.cfg) =~ hostname[[:blank:]]*=[[:blank:]]*(.*) ]]
 then
 hostname=${BASH_REMATCH[1]}
 fi
@@ -177,5 +221,5 @@ echo ""
 success $"----Harbor has been installed and started successfully.----
 
 Now you should be able to visit the admin portal at ${protocol}://${hostname}. 
-For more details, please visit https://github.com/vmware/harbor .
+For more details, please visit https://github.com/goharbor/harbor .
 "

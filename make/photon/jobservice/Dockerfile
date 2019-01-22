@@ -1,8 +1,12 @@
-FROM library/photon:1.0
+FROM photon:2.0
 
-RUN mkdir /harbor/
-COPY ./make/dev/jobservice/harbor_jobservice /harbor/
+RUN mkdir /harbor/ \
+    && tdnf install sudo -y >> /dev/null\
+    && tdnf clean all \
+    && groupadd -r -g 10000 harbor && useradd --no-log-init -r -g 10000 -u 10000 harbor 
 
-RUN chmod u+x /harbor/harbor_jobservice
+COPY ./make/photon/jobservice/start.sh ./make/photon/jobservice/harbor_jobservice /harbor/
+
+RUN chmod u+x /harbor/harbor_jobservice /harbor/start.sh
 WORKDIR /harbor/
-ENTRYPOINT ["/harbor/harbor_jobservice"]
+ENTRYPOINT ["/harbor/start.sh"]

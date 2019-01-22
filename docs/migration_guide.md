@@ -1,98 +1,84 @@
 # Harbor upgrade and database migration guide
 
-When upgrading your existing Habor instance to a newer version, you may need to migrate the data in your database. Refer to [change log](../migration/changelog.md) to find out whether there is any change in the database. If there is, you should go through the database migration process. Since the migration may alter the database schema, you should **always** back up your data before any migration. 
+When upgrading your existing Harbor instance to a newer version, you may need to migrate the data in your database and the settings in `harbor.cfg`. Since the migration may alter the database schema and the settings of `harbor.cfg`, you should **always** back up your data before any migration.
 
-*If your install Harbor for the first time, or the database version is the same as that of the lastest version, you do not need any database migration.*
+**NOTE:**
 
+- Again, you must back up your data before any data migration.
 
-**NOTE:** You must backup your data before any data migration.
+- This guide only covers the migration from v1.6.0 to current version, if you are upgrading from earlier versions please 
+refer to the migration guide in release branch to upgrade to v1.6.0 and follow this guide to do the migration to later version. 
+
+- From v1.6.0 on, Harbor will automatically try to do the migrate the DB schema when it starts, so if you are upgrading from v1.6.0 
+or above it's not necessary to call the migrator tool to migrate the schema.
+
+- From v1.6.0 on, Harbor migrates DB from MariaDB to PostgreSQL, and combines Harbor, Notary and Clair DB into one. 
+
+- For the change in Database schema please refer to [change log](../tools/migration/db/changelog.md).
+
 
 ### Upgrading Harbor and migrating data
 
-1. Log in to the machine that Harbor runs on, stop and remove existing Harbor service if it is still running:
-
-    ``` 
-    cd make/
+1. Log in to the host that Harbor runs on, stop and remove existing Harbor instance if it is still running:
+    ```
+    cd harbor
     docker-compose down
     ```
 
-2.  Back up Harbor's current source code so that you can roll back to the current version when it is necessary.
-    ```sh
-    cd ../..
-    mv harbor /tmp/harbor
+2.  Back up Harbor's current files so that you can roll back to the current version when it is necessary.
+    ```
+    mv harbor /my_backup_dir/harbor
+    ```
+    Back up database (by default in diretory `/data/database`)
+    ```
+    cp -r /data/database /my_backup_dir/
     ```
 
-3. Get the lastest source code from Github:
-    ```sh
-    git clone https://github.com/vmware/harbor
-    ```
- 
-4. Before upgrading Harbor, perform database migration first.  The migration tool is delivered as a docker image, so you should pull the image from docker hub:
+3. Get the latest Harbor release package from Github:
+   https://github.com/goharbor/harbor/releases
 
+4. Before upgrading Harbor, perform migration first.  The migration tool is delivered as a docker image, so you should pull the image from docker hub. Replace [tag] with the release version of Harbor (e.g. v1.5.0) in the below command:
     ```
-    docker pull vmware/harbor-db-migrator
+    docker pull goharbor/harbor-migrator:[tag]
     ```
 
-5. Back up database to a directory such as `/path/to/backup`. You need to create the directory if it does not exist.  Also, note that the username and password to access the db are provided via environment variable "DB_USR" and "DB_PWD"
-
+5. Upgrade `harbor.cfg`.
+    **NOTE:** The ${harbor_cfg} will be overwritten, you must move it to your installation directory after migration.
     ```
-    docker run -ti --rm -e DB_USR=root -e DB_PWD=xxxx -v /data/database:/var/lib/mysql -v /path/to/backup:/harbor-migration/backup vmware/harbor-db-migrator backup
+    docker run -it --rm -v ${harbor_cfg}:/harbor-migration/harbor-cfg/harbor.cfg goharbor/harbor-migrator:[tag] --cfg up
     ```
+    **NOTE:** The schema upgrade and data migration of Database is performed by adminserver when Harbor starts, if the migration fails, 
+    please check the log of adminserver to debug.
 
-6.  Upgrade database schema and migrate data:
+6. Under the directory `./harbor`, run the `./install.sh` script to install the new Harbor instance. If you choose to install Harbor with components like Notary, Clair, and chartmuseum, refer to [Installation & Configuration Guide](../docs/installation_guide.md) for more information.
 
-    ```
-    docker run -ti --rm -e DB_USR=root -e DB_PWD=xxxx -v /data/database:/var/lib/mysql vmware/harbor-db-migrator up head
-    ```
-
-7. Change to `make/` directory, configure Harbor by modifying the file `harbor.cfg`, you may need to refer to the configuration files you've backed up during step 2. Refer to [Installation & Configuration Guide ](../docs/installation_guide.md) for more info.
-
-
-8. Under the directory `make/`, run the `./prepare` script to generate necessary config files.
- 
-9. Rebuild Harbor and restart the registry service
-
-    ```
-    docker-compose up --build -d
-    ```
 
 ### Roll back from an upgrade
 For any reason, if you want to roll back to the previous version of Harbor, follow the below steps:
 
-1. Stop and remove the current Harbor service if it is still running.
+**NOTE:** Roll back doesn't support upgrade across v1.5.0, like from v1.2.0 to v1.7.0. This is because Harbor changes DB to PostgreSQL from v1.7.0, the migrator cannot roll back data to MariaDB.    
 
-    ``` 
-    cd make/
+1. Stop and remove the current Harbor service if it is still running.
+    ```
+    cd harbor
     docker-compose down
     ```
-2. Restore database from backup file in `/path/to/backup` .
-
+    
+2. Remove current Harbor instance.
     ```
-    docker run -ti --rm -e DB_USR=root -e DB_PWD=xxxx -v /data/database:/var/lib/mysql -v /path/to/backup:/harbor-migration/backup vmware/harbor-db-migrator restore
-    ```
-
-3. Remove current source code of Harbor.
-    ``` 
     rm -rf harbor
     ```
-
-4. Restore the source code of an older version of Harbor. 
+    
+3. Restore the older version package of Harbor.
     ```sh
-    mv /tmp/harbor harbor
-    ```
-
-5. Restart Harbor service using the previous configuration.
-    ```sh
-    cd make/
-    docker-compose up --build -d
+    mv /my_backup_dir/harbor harbor
     ```
     
-### Migration tool reference
-- Use `help` command to show instructions of the migration tool:
+4. Restore database, copy the data files from backup directory to you data volume, by default `/data/database`. 
 
-    ```docker run --rm -e DB_USR=root -e DB_PWD=xxxx vmware/harbor-db-migrator help```
-    
-- Use `test` command to test mysql connection:
-
-    ```docker run --rm -e DB_USR=root -e DB_PWD=xxxx -v /data/database:/var/lib/mysql vmware/harbor-db-migrator test```
-
+5. Restart Harbor service using the previous configuration.  
+   If previous version of Harbor was installed by a release build:
+    ```sh
+    cd harbor
+    ./install.sh
+    ```

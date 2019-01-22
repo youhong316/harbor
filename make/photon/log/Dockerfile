@@ -1,23 +1,26 @@
-FROM library/photon:1.0
+FROM photon:2.0
 
-# run logrotate hourly, disable imklog model, provides TCP/UDP syslog reception
-RUN tdnf install -y cronie rsyslog shadow tar gzip \
-	&& mkdir /etc/rsyslog.d/ \
+RUN tdnf install -y cronie rsyslog logrotate shadow tar gzip sudo >> /dev/null\
     && mkdir /var/spool/rsyslog \
-    && groupadd syslog \
-    && useradd -g syslog syslog
-    
-ADD make/common/log/rsyslog.conf /etc/rsyslog.conf
+    && groupadd -r -g 10000 syslog && useradd --no-log-init -r -g 10000 -u 10000 syslog \
+    && tdnf clean all
 
-# rotate logs weekly
-# notes: file name cannot contain dot, or the script will not run
-ADD make/common/log/rotate.sh /etc/cron.weekly/rotate
+COPY ./make/photon/log/rsyslog.conf /etc/rsyslog.conf
 
 # rsyslog configuration file for docker
-ADD make/common/log/rsyslog_docker.conf /etc/rsyslog.d/
+COPY ./make/photon/log/rsyslog_docker.conf /etc/rsyslog.d/
 
-VOLUME /var/log/docker/
+# run logrotate hourly
+RUN mv /etc/cron.daily/logrotate /etc/cron.hourly/logrotate
 
-EXPOSE 514
+COPY ./make/photon/log/start.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/start.sh /etc/rsyslog.d/ && \
+    chown -R 10000:10000 /etc/rsyslog.conf /etc/rsyslog.d/ /run 
 
-CMD crond && rm -f /var/run/rsyslogd.pid && rsyslogd -n
+HEALTHCHECK CMD netstat -ltun|grep 10514
+
+VOLUME /var/log/docker/ /run/ /etc/logrotate.d/
+
+EXPOSE 10514
+
+CMD /usr/local/bin/start.sh
